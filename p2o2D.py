@@ -1,4 +1,4 @@
-""" 
+"""
 
 p2o 2D optimizer in Python
 
@@ -13,6 +13,7 @@ Ref:
 
 import sys
 import time
+import math
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -27,23 +28,71 @@ class Optimizer2D:
 
     def optimize_path(self, nodes, consts, max_iter, min_iter):
 
-        graph_nodes = []
+        graph_nodes = nodes[:]
+        prev_cost = sys.float_info.max
 
         for i in range(max_iter):
             start = time.time()
-            cost, graph_nodes = self.optimize_path_one_step()
+            cost, graph_nodes = self.optimize_path_one_step(
+                graph_nodes, consts)
             elapsed = time.time() - start
             if self.verbose:
-                print("step ", i, ": ", cost, " time:", elapsed, "s")
+                print("step ", i, " cost: ", cost, " time:", elapsed, "s")
+
+            # check convergence
+            if (i > min_iter) and (prev_cost - cost < self.stop_thre):
+                if self.verbose:
+                    print("converged:", prev_cost -
+                          cost, " < ", self.stop_thre)
+                    break
 
         return graph_nodes
 
-    def optimize_path_one_step(self):
+    def optimize_path_one_step(self, graph_nodes, constraints):
+
+        tripletList = []
+        numnodes = len(graph_nodes)
+
+        for con in constraints:
+            ida = con.id1
+            idb = con.id2
+            assert 0 <= ida and ida < numnodes, "ida is invalid"
+            assert 0 <= idb and idb < numnodes, "idb is invalid"
+            pa = graph_nodes[ida]
+            pb = graph_nodes[idb]
+
+            r, Ja, Jb = self.calc_error(pa, pb, con.t)
 
         cost = 1.0
-        graph_nodes = []
 
         return cost, graph_nodes
+
+    def error_func(self, pa, pb, t):
+        error = 0.0
+
+        # error = np.array([ba.x - t.x,
+        # ba.y - t.y,
+        # self.normalize_rad_pi_mpi(ba.theta - t.theta)])
+
+        return error
+
+    def calc_error(self, pa, pb, t):
+
+        Ja = None
+        Jb = None
+        e0 = self.error_func(pa, pb, t)
+
+        return e0, Ja, Jb
+
+    def normalize_rad_pi_mpi(rad):
+
+        val = math.fmod(rad, 2.0 * math.pi)
+        if val > math.pi:
+            val -= 2.0 * math.pi
+        elif val < -math.pi:
+            val += 2.0 * math.pi
+
+        return val
 
 
 class Pose2D:
