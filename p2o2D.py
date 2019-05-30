@@ -42,8 +42,8 @@ class Optimizer2D:
             # check convergence
             if (i > min_iter) and (prev_cost - cost < self.stop_thre):
                 if self.verbose:
-                    print("converged:", prev_cost -
-                          cost, " < ", self.stop_thre)
+                    print("converged:", prev_cost
+                          - cost, " < ", self.stop_thre)
                     break
 
         return graph_nodes
@@ -62,29 +62,51 @@ class Optimizer2D:
             pb = graph_nodes[idb]
 
             r, Ja, Jb = self.calc_error(pa, pb, con.t)
+            # info = con.info @ robust_coeff(r.transpose() * con.info * r, robust_delta);
 
         cost = 1.0
 
         return cost, graph_nodes
 
     def error_func(self, pa, pb, t):
-        error = 0.0
-
-        # error = np.array([ba.x - t.x,
-        # ba.y - t.y,
-        # self.normalize_rad_pi_mpi(ba.theta - t.theta)])
-
+        ba = self.ominus(pa, pb)
+        error = np.array([ba.x - t.x,
+                          ba.y - t.y,
+                          self.normalize_rad_pi_mpi(ba.theta - t.theta)])
         return error
+
+    def ominus(self, l, r):
+        diff = np.array([l.x - r.x, l.y - r.y, l.theta - r.theta])
+        v = np.matmul(self.rot_mat_2d(-r.theta), diff)
+        v[2] = self.normalize_rad_pi_mpi(l.theta - r.theta)
+        return Pose2D(v[0], v[1], v[2], None)
+
+    def rot_mat_2d(self, th):
+        return np.array([[math.cos(th), -math.sin(th), 0.0],
+                         [math.sin(th), math.cos(th), 0.0],
+                         [0.0, 0.0, 1.0]
+                         ])
 
     def calc_error(self, pa, pb, t):
 
-        Ja = None
-        Jb = None
         e0 = self.error_func(pa, pb, t)
+        dx = pb.x - pa.x
+        dy = pb.y - pa.y
+        dxdt = -math.sin(pa.theta) * dx + math.cos(pa.theta) * dy
+        dydt = -math.cos(pa.theta) * dx - math.sin(pa.theta) * dy
+
+        Ja = np.array([[-math.cos(pa.theta), -math.sin(pa.theta), dxdt],
+                       [math.sin(pa.theta), -math.cos(pa.theta), dydt],
+                       [0.0, 0.0, -1.0]
+                       ])
+        Jb = np.array([[math.cos(pa.theta), math.sin(pa.theta), 0.0],
+                       [-math.sin(pa.theta), math.cos(pa.theta), 0.0],
+                       [0.0, 0.0, 1.0]
+                       ])
 
         return e0, Ja, Jb
 
-    def normalize_rad_pi_mpi(rad):
+    def normalize_rad_pi_mpi(self, rad):
 
         val = math.fmod(rad, 2.0 * math.pi)
         if val > math.pi:
