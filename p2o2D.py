@@ -16,6 +16,8 @@ import time
 import math
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy import sparse
+from scipy.sparse import linalg
 
 
 class Optimizer2D:
@@ -45,13 +47,17 @@ class Optimizer2D:
                     print("converged:", prev_cost
                           - cost, " < ", self.stop_thre)
                     break
+            prev_cost = cost
 
         return graph_nodes
 
     def optimize_path_one_step(self, graph_nodes, constraints):
 
-        tripletList = []
+        tripletList = []  # TODO have to change row, col data list
+        dim = 3
+        indlist = [0, 1, 2]
         numnodes = len(graph_nodes)
+        bf = np.zeros(numnodes * dim)
 
         for con in constraints:
             ida = con.id1
@@ -62,11 +68,86 @@ class Optimizer2D:
             pb = graph_nodes[idb]
 
             r, Ja, Jb = self.calc_error(pa, pb, con.t)
-            # info = con.info @ robust_coeff(r.transpose() * con.info * r, robust_delta);
+            info = con.info_mat * self.robust_coeff(
+                r.transpose() @ con.info_mat @ r, self.robust_delta)
 
-        cost = 1.0
+            trJaInfo = Ja.transpose() @ info
+            trJaInfoJa = trJaInfo @ Ja
+            trJbInfo = Jb.transpose() @ info
+            trJbInfoJb = trJbInfo @ Jb
+            trJaInfoJb = trJaInfo @ Jb
 
-        return cost, graph_nodes
+            for k in indlist:
+                for m in indlist:
+                    tripletList.append(
+                        (ida * dim + k, ida * dim + m, trJaInfoJa[k, m]))
+                    tripletList.append(
+                        (idb * dim + k, idb * dim + m, trJbInfoJb[k, m]))
+                    tripletList.append(
+                        (ida * dim + k, idb * dim + m, trJaInfoJb[k, m]))
+                    tripletList.append(
+                        (idb * dim + k, ida * dim + m, trJaInfoJb[m, k]))
+
+            bf[ida * dim: ida * dim + 3] += trJaInfo @ r
+            bf[idb * dim: idb * dim + 3] += trJbInfo @ r
+
+        for k in indlist:
+            tripletList.append((k, k, 1e10))
+
+        for i in range(dim * numnodes):
+            tripletList.append((i, i, self.p_lambda))
+
+        # create sparse matrix
+        row, col, data = [], [], []
+        for t in tripletList:
+            row.append(t[0])
+            col.append(t[1])
+            data.append(t[2])
+
+        mat = sparse.coo_matrix((data, (row, col)),
+                                shape=(numnodes * dim, numnodes * dim))
+
+        x = linalg.spsolve(mat.tocsr(), bf)
+        # print(x)
+
+        # print((numnodes * dim)**2, mat.count_nonzero())
+        # print(len(tripletList))
+        # print(bf)
+
+        out_nodes = []
+        for i in range(len(graph_nodes)):
+            u_i = i * dim
+            pos = Pose2D(
+                graph_nodes[i].x + x[u_i],
+                graph_nodes[i].y + x[u_i + 1],
+                graph_nodes[i].theta + x[u_i + 2],
+                None
+            )
+            out_nodes.append(pos)
+
+        cost = self.calc_global_cost(out_nodes, constraints)
+
+        return cost, out_nodes
+
+    def calc_global_cost(self, nodes, constraints):
+        cost = 0.0
+        for c in constraints:
+            diff = self.error_func(nodes[c.id1], nodes[c.id2], c.t)
+            info = c.info_mat * \
+                self.robust_coeff(diff.transpose()@c.info_mat@
+                                  diff, self.robust_delta)
+            cost += diff.transpose() @ info @ diff
+
+        return cost
+
+    def robust_coeff(self, squared_error, delta):
+
+        if squared_error < 0:
+            return 0.0
+        sqre = math.sqrt(squared_error)
+        if sqre < delta:
+            return 1.0  # no effect
+        return delta / sqre
 
     def error_func(self, pa, pb, t):
         ba = self.ominus(pa, pb)
@@ -191,12 +272,16 @@ def main():
     optimizer.robust_thre = robust_thre
 
     start = time.time()
-    optimizer.optimize_path(nodes, consts, max_iter, min_iter)
+    final_nodes = optimizer.optimize_path(nodes, consts, max_iter, min_iter)
     print("elapsed_time", time.time() - start, "sec")
 
     # plotting
     for n in nodes:
-        plt.plot(n.x, n.y, ".r", label="before")
+        plt.plot(n.x, n.y, ".b", label="before")
+
+    for n in final_nodes:
+        plt.plot(n.x, n.y, ".r", label="after")
+
     plt.axis("equal")
     plt.grid(True)
     plt.show()
