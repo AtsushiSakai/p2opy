@@ -251,9 +251,9 @@ def load_data(fname):
 def main():
     print("start!!")
 
-    fname = "./p2o/samples/intel.g2o"
-    # fname = "./p2o/samples/manhattan3500.g2o"
-    # fname = "./p2o/samples/mit_killian.g2o"
+    # fname = "intel.g2o"
+    # fname = "manhattan3500.g2o"
+    fname = "mit_killian.g2o"
     max_iter = 20
     min_iter = 3
     robust_thre = 1
