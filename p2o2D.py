@@ -24,11 +24,11 @@ class Optimizer2D:
 
     def __init__(self):
         self.verbose = False
+        self.animation = False
         self.p_lambda = 0.0
         self.init_w = 1e10
         self.stop_thre = 1e-3
         self.dim = 3  # state dimension
-        self.robust_delta = sys.float_info.max
 
     def optimize_path(self, nodes, consts, max_iter, min_iter):
 
@@ -51,6 +51,13 @@ class Optimizer2D:
                     break
             prev_cost = cost
 
+            if self.animation:
+                plt.cla()
+                plot_nodes(nodes, color="-b")
+                plot_nodes(graph_nodes)
+                plt.axis("equal")
+                plt.pause(1.0)
+
         return graph_nodes
 
     def optimize_path_one_step(self, graph_nodes, constraints):
@@ -67,13 +74,10 @@ class Optimizer2D:
             assert 0 <= idb and idb < numnodes, "idb is invalid"
             r, Ja, Jb = self.calc_error(
                 graph_nodes[ida], graph_nodes[idb], con.t)
-            info = con.info_mat * self.robust_coeff(
-                r.transpose() @ con.info_mat @ r,
-                self.robust_delta)
 
-            trJaInfo = Ja.transpose() @ info
+            trJaInfo = Ja.transpose() @ con.info_mat
             trJaInfoJa = trJaInfo @ Ja
-            trJbInfo = Jb.transpose() @ info
+            trJbInfo = Jb.transpose() @ con.info_mat
             trJbInfoJb = trJbInfo @ Jb
             trJaInfoJb = trJaInfo @ Jb
 
@@ -120,19 +124,9 @@ class Optimizer2D:
         cost = 0.0
         for c in constraints:
             diff = self.error_func(nodes[c.id1], nodes[c.id2], c.t)
-            info = c.info_mat * self.robust_coeff(diff.transpose() @ c.info_mat @ diff,
-                                                  self.robust_delta)
-            cost += diff.transpose() @ info @ diff
+            cost += diff.transpose() @ c.info_mat @ diff
 
         return cost
-
-    def robust_coeff(self, squared_error, delta):
-        if squared_error < 0:
-            return 0.0
-        sqre = math.sqrt(squared_error)
-        if sqre < delta:
-            return 1.0
-        return delta / sqre
 
     def error_func(self, pa, pb, t):
         ba = self.calc_constraint_pose(pb, pa)
@@ -210,6 +204,14 @@ class Constrant2D:
         self.info_mat = info_mat
 
 
+def plot_nodes(nodes, color ="-r", label = ""):
+    x, y = [], []
+    for n in nodes:
+        x.append(n.x)
+        y.append(n.y)
+    plt.plot(x, y, color, label=label)
+
+
 def load_data(fname):
     nodes, consts = [], []
 
@@ -251,12 +253,11 @@ def load_data(fname):
 def main():
     print("start!!")
 
-    # fname = "intel.g2o"
+    fname = "intel.g2o"
     # fname = "manhattan3500.g2o"
-    fname = "mit_killian.g2o"
+    # fname = "mit_killian.g2o"
     max_iter = 20
     min_iter = 3
-    robust_thre = 1
 
     nodes, consts = load_data(fname)
 
@@ -264,25 +265,16 @@ def main():
     optimizer = Optimizer2D()
     optimizer.p_lambda = 1e-6
     optimizer.verbose = True
-    optimizer.robust_thre = robust_thre
+    optimizer.animation = True
 
     start = time.time()
     final_nodes = optimizer.optimize_path(nodes, consts, max_iter, min_iter)
     print("elapsed_time", time.time() - start, "sec")
 
     # plotting
-    bx, by = [], []
-    for n in nodes:
-        bx.append(n.x)
-        by.append(n.y)
-    plt.plot(bx, by, ".b", label="before")
-
-    ax, ay = [], []
-    for n in final_nodes:
-        ax.append(n.x)
-        ay.append(n.y)
-    plt.plot(ax, ay, ".r", label="after")
-
+    plt.cla()
+    plot_nodes(nodes, color="-b", label="before")
+    plot_nodes(final_nodes, label="after")
     plt.axis("equal")
     plt.grid(True)
     plt.legend()
